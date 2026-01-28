@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Node.js
+node_modules/
+dist/
+npm-debug.log*
+
+# Project Data
+data/uploads/*
+data/processed/*
+data/ocr.db
+data/models/*
+
+# IDEs
+.vscode/
+.idea/
+
+# Mac
+.DS_Store
+
+# Ignore the models folder itself but keep the placeholder if needed (optional)
+# We want to ignore the downloaded heavy models
+deepseek-ai/
