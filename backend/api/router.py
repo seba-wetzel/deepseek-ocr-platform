@@ -1,13 +1,18 @@
-from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException
+from typing import Optional
+from fastapi import APIRouter, UploadFile, File, Form, BackgroundTasks, HTTPException, Body
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
+from pydantic import BaseModel
 import shutil
 import os
 import uuid
+import logging
 import json
 import asyncio
-import logging
 from backend.services.ocr_service import process_pdf_background
-from backend.database import init_db, create_job, get_job, get_all_jobs, cancel_job, delete_job
+from backend.database import (
+    init_db, create_job, get_job, get_all_jobs, cancel_job, delete_job,
+    get_prompts, get_prompt, create_prompt, update_prompt
+)
 
 router = APIRouter()
 
@@ -15,11 +20,34 @@ UPLOAD_DIR = "data/uploads"
 PROCESSED_DIR = "data/processed"
 logger = logging.getLogger(__name__)
 
-# Initialize DB on import (or handle in startup event more formally)
+# Initialize DB on import
 init_db()
 
+class PromptRequest(BaseModel):
+    name: str
+    content: str
+    description: Optional[str] = ""
+
+@router.get("/prompts")
+async def list_prompts_endpoint():
+    return get_prompts()
+
+@router.post("/prompts")
+async def create_prompt_endpoint(prompt: PromptRequest):
+    prompt_id = create_prompt(prompt.name, prompt.content, prompt.description)
+    return {"id": prompt_id, "message": "Prompt created"}
+
+@router.put("/prompts/{prompt_id}")
+async def update_prompt_endpoint(prompt_id: int, prompt: PromptRequest):
+    update_prompt(prompt_id, prompt.name, prompt.content, prompt.description)
+    return {"message": "Prompt updated"}
+
 @router.post("/upload")
-async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+async def upload_file(
+    background_tasks: BackgroundTasks, 
+    file: UploadFile = File(...), 
+    prompt_id: Optional[int] = Form(None)
+):
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
     
@@ -29,13 +57,18 @@ async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File
     with open(file_location, "wb+") as file_object:
         file_object.write(file.file.read())
     
-    # Create job in DB, passing original filename
-    create_job(job_id, original_filename=file.filename)
+    # Resolve prompt text
+    used_prompt_text = None
+    if prompt_id:
+        p = get_prompt(prompt_id)
+        if p:
+            used_prompt_text = p['content']
+
+    # Create job in DB, passing original filename and used prompt
+    create_job(job_id, original_filename=file.filename, used_prompt=used_prompt_text)
     
-    # Start background task
-    # process_pdf_background is now a normal function (def, not async def)
-    # FastAPI automatically runs it in a separate thread pool!
-    background_tasks.add_task(process_pdf_background, job_id, file_location)
+    # Start background task with optional custom prompt
+    background_tasks.add_task(process_pdf_background, job_id, file_location, used_prompt_text)
     
     return {"job_id": job_id, "status": "queued"}
 

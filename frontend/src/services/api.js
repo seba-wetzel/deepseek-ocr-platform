@@ -1,17 +1,38 @@
 import axios from 'axios';
 
+const API_URL = 'http://127.0.0.1:8000/api';
+
 const api = axios.create({
-    baseURL: 'http://127.0.0.1:8000/api',
+    baseURL: API_URL,
 });
 
 export default {
-    uploadFile(file, onUploadProgress) {
-        const formData = new FormData();
-        formData.append('file', file);
+    // Changed upload to accept prompt_id
+    uploadFile(file, promptId = null, onUploadProgress) {
+        let formData = new FormData();
+        formData.append("file", file);
+        if (promptId) {
+            formData.append("prompt_id", promptId);
+        }
 
-        return api.post('/upload', formData, {
-            onUploadProgress,
+        return axios.post(`${API_URL}/upload`, formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            },
+            onUploadProgress
         });
+    },
+
+    getPrompts() {
+        return axios.get(`${API_URL}/prompts`);
+    },
+
+    createPrompt(data) {
+        return axios.post(`${API_URL}/prompts`, data);
+    },
+
+    updatePrompt(id, data) {
+        return axios.put(`${API_URL}/prompts/${id}`, data);
     },
     getStatus(jobId) {
         return api.get(`/status/${jobId}`);

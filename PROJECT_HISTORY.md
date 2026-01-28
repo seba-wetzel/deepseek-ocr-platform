@@ -115,3 +115,155 @@ A continuación, una lista de los errores críticos encontrados durante el desar
 | **Conexiones SSE Múltiples** | Cada componente `JobResult` abría su propia conexión, saturando el navegador y el server. | **Refactor Arquitectónico**: Centralización de conexiones en `App.vue` (Singleton por JobID). |
 | **NameError en Router** | `global name 'ocr_service' is not defined` tras mover funciones. | Corrección de imports y referencias directas en `router.py`. |
 
+---
+
+# V2: Migración a DeepSeek-OCR-2 y Sistema de Prompts Personalizados
+
+**Fecha de Desarrollo:** 27-28 de Enero 2026  
+**Rama Git:** `v2`
+
+## 1. Requerimientos de la V2
+
+### Objetivos Principales
+1. **Migrar a DeepSeek-OCR-2** - El nuevo modelo especializado en OCR con arquitectura "Visual Causal Flow".
+2. **Sistema de Prompts Personalizables** - Permitir que el usuario cree, edite y seleccione prompts personalizados desde la UI.
+3. **Refactorizar UI/UX** - Crear componentes dedicados para selección de archivos (`FileSelector`) y gestión de prompts (`PromptManager`).
+4. **Exportación de Resultados** - Agregar botones para descargar resultados como Excel o CSV.
+
+### Funcionalidad Añadida
+- **CRUD de Prompts**: API endpoints para crear, leer, actualizar y eliminar prompts persistentes en SQLite.
+- **UI de Gestión de Prompts**: Panel lateral con selector, formulario de edición, y marcación de prompt por defecto.
+- **Botones de Exportación**: Descarga directa a `.xlsx` y `.csv`.
+- **Subida de Archivos Mejorada**: Indicador de progreso visual durante el upload.
+
+---
+
+## 2. Desafíos Técnicos y Soluciones
+
+### 2.1 Cambio de Modelo: DeepSeek-VL → DeepSeek-OCR-2
+
+**Problema:** El modelo anterior (DeepSeek-VL 1.3B Chat) no era el modelo OCR especializado. Los resultados eran descripciones genéricas de las imágenes.
+
+**Descubrimiento:** Al investigar el repositorio oficial de DeepSeek, se encontró que existe un modelo dedicado `deepseek-ai/DeepSeek-OCR-2` con método `.infer()` nativo.
+
+**Solución:**
+```python
+# Antes (incorrecto):
+from deepseek_vl.models import VLChatProcessor
+# Ahora (correcto):
+model = AutoModel.from_pretrained("deepseek-ai/DeepSeek-OCR-2", trust_remote_code=True)
+result = model.infer(tokenizer, prompt=prompt, image_file=path, ...)
+```
+
+### 2.2 El Misterio del Prompt: `<|grounding|>` vs HTML Output
+
+**Problema:** El usuario quería obtener datos en formato CSV, pero el modelo siempre devolvía tablas HTML complejas sin importar las instrucciones del prompt.
+
+**Investigación:**
+1. Se revisó el repositorio oficial de DeepSeek-OCR.
+2. Se consultó la documentación de vLLM para DeepSeek-OCR.
+3. Se encontró el archivo `config.py` con los prompts oficiales.
+
+**Hallazgos Críticos:**
+- El token `<|grounding|>` activa el modo de **reconstrucción de layout visual** → siempre genera HTML/Markdown.
+- El modelo está **entrenado para HTML/Markdown**, no puede generar CSV directamente.
+- En vLLM, los tokens `<td>` y `</td>` están explícitamente en whitelist.
+
+**Prompts Oficiales Soportados:**
+
+| Prompt | Resultado |
+|--------|-----------|
+| `<image>\n<|grounding|>Convert the document to markdown.` | Tablas en Markdown ✅ |
+| `<image>\nFree OCR.` | Texto plano (sin tablas) |
+| `<image>\nParse the figure.` | Para gráficos |
+
+**Resolución Final:** Se recomendó usar el prompt de Markdown (mejor resultado) y confiar en los botones de exportación para conversión a CSV/Excel.
+
+### 2.3 Parámetros de Inferencia Incorrectos
+
+**Problema:** Con ciertos prompts, el modelo devolvía salida completamente vacía.
+
+**Causa:** El parámetro `image_size=640` no coincidía con la documentación oficial que usa `image_size=768`.
+
+**Solución:**
+```python
+text_result = model.infer(
+    tokenizer,
+    prompt=prompt,
+    image_file=temp_image_path,
+    base_size=1024,
+    image_size=768,  # Corregido de 640 a 768
+    crop_mode=True,
+    save_results=True
+)
+```
+
+### 2.4 Arquitectura de Componentes: Props vs API Calls
+
+**Problema:** El componente `PromptManager` hacía sus propias llamadas API, creando duplicación de lógica y problemas de sincronización con `App.vue`.
+
+**Solución:** Refactorización al patrón "Smart Parent / Dumb Child":
+- `App.vue`: Centraliza todas las llamadas API (`fetchPrompts`, `handleSavePrompt`).
+- `PromptManager`: Recibe `prompts` como prop, emite eventos (`@save-prompt`).
+
+---
+
+## 3. Registro de Errores V2
+
+| Error / Problema | Detalle Técnico | Solución |
+| :--- | :--- | :--- |
+| **Modelo Describía en vez de OCR** | Se cargaba DeepSeek-VL Chat en lugar del modelo OCR especializado. | Migración a `deepseek-ai/DeepSeek-OCR-2` con método `.infer()`. |
+| **HTML en lugar de CSV** | El usuario quería CSV pero obtenía `<table>` HTML. | Explicación: El modelo está entrenado para HTML/Markdown. Usar exportación para conversión. |
+| **Salida Vacía** | Con `image_size=640`, ciertos prompts no devolvían nada. | Corrección a `image_size=768` según documentación oficial. |
+| **Prompt sin `<image>`** | El prompt del usuario no incluía el token de imagen requerido. | Educación sobre formato obligatorio: `<image>\n<|grounding|>...` |
+| **result.mmd no encontrado** | `model.infer()` devolvía `None` y el archivo no se creaba. | Depuración intensiva; el problema era el formato de prompt. |
+| **PromptManager duplicaba lógica** | Componente hacía API calls propias, desincronizando estado. | Refactor a patrón props/events con estado centralizado en `App.vue`. |
+
+---
+
+## 4. Fuentes de Investigación
+
+1. **GitHub DeepSeek-OCR-2**: [https://github.com/deepseek-ai/DeepSeek-OCR-2](https://github.com/deepseek-ai/DeepSeek-OCR-2)
+2. **HuggingFace Model Card**: [https://huggingface.co/deepseek-ai/DeepSeek-OCR-2](https://huggingface.co/deepseek-ai/DeepSeek-OCR-2)
+3. **vLLM Recipes - DeepSeek-OCR**: [https://docs.vllm.ai/projects/recipes/en/latest/DeepSeek/DeepSeek-OCR.html](https://docs.vllm.ai/projects/recipes/en/latest/DeepSeek/DeepSeek-OCR.html)
+4. **Config.py Oficial (Prompts)**: [config.py en GitHub](https://github.com/deepseek-ai/DeepSeek-OCR/blob/main/DeepSeek-OCR-master/DeepSeek-OCR-vllm/config.py)
+
+---
+
+## 5. Métricas del Desarrollo V2
+
+| Métrica | Valor |
+|---------|-------|
+| **Tiempo de Desarrollo** | ~6 horas |
+| **Iteraciones Mayores** | ~20 |
+| **Prompts de Usuario** | ~35 interacciones |
+| **Complejidad** | Media-Alta (Nuevo modelo, debugging de prompts, refactor UI) |
+
+---
+
+## 6. Opiniones y Sugerencias para V3
+
+> **Nota del Desarrollador (AI):** Las siguientes son observaciones personales basadas en el desarrollo de esta versión.
+
+### Mejoras Sugeridas
+
+1. **Migración a vLLM**: El uso de vLLM en lugar de Transformers directos podría mejorar significativamente el rendimiento (batching, KV cache, etc.). Esto requeriría refactorizar `ocr_service.py` para usar el cliente vLLM.
+
+2. **Post-Procesamiento Inteligente**: Si el usuario necesita CSV, implementar una capa de parsing que detecte tablas HTML/Markdown y las convierta automáticamente al formato deseado (deshabilitado en V2 por preferencia del usuario, pero útil como opción).
+
+3. **Preview de Imagen**: Mostrar una miniatura de cada página del PDF junto al resultado OCR para verificación visual.
+
+4. **Sistema de Templates de Prompt**: En lugar de prompts libres, ofrecer templates predefinidos con variables (ej: "Extraer tablas de {tipo_documento}").
+
+5. **Pruebas Automatizadas**: Implementar tests unitarios para la API y tests E2E para el flujo completo de OCR.
+
+6. **Manejo de Errores de GPU**: Actualmente si la GPU se queda sin memoria, el proceso falla silenciosamente. Sería útil tener recovery automático o mensajes más claros.
+
+### Correcciones Pendientes
+
+- **Warnings de Transformers**: El modelo genera warnings sobre `attention_mask` y `pad_token_id`. Estos son inofensivos pero podrían silenciarse explícitamente.
+- **Logs de Debug**: Algunos logs de debug (`--- Raw Model Output ---`) quedaron activos; considerar hacerlos configurables.
+
+---
+
+*Última actualización: 28 de Enero 2026*

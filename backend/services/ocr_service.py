@@ -31,7 +31,7 @@ def load_model():
         MODEL_PATH = os.getenv("OCR_MODEL_PATH", DEFAULT_PATH)
         
         if not os.path.exists(MODEL_PATH) and MODEL_PATH == DEFAULT_PATH:
-            MODEL_PATH = "deepseek-ai/DeepSeek-OCR"
+            MODEL_PATH = "deepseek-ai/DeepSeek-OCR-2"
 
         logger.info(f"Loading model from {MODEL_PATH}...")
         
@@ -61,7 +61,7 @@ def load_model():
 
 from backend.database import update_job, save_result, save_page_result, get_job
 
-def process_pdf_background(job_id: str, file_path: str):
+def process_pdf_background(job_id: str, file_path: str, custom_prompt: str = None):
     """
     Background task to process the PDF.
     Now SYNCHRONOUS (def instead of async def) to run in a thread pool.
@@ -125,7 +125,8 @@ def process_pdf_background(job_id: str, file_path: str):
                 image.save(temp_image_path)
 
                 # Prepare prompt (Official Format)
-                prompt = "<image>\n<|grounding|>Convert the document to markdown."
+                default_prompt = "<image>\n<|grounding|>Convert the document to markdown."
+                prompt = custom_prompt if custom_prompt else default_prompt
                 
                 # Create unique output directory for this page to avoid collisions
                 page_output_dir = os.path.join(PROCESSED_DIR, f"{job_id}_page_{i}_out")
@@ -139,7 +140,7 @@ def process_pdf_background(job_id: str, file_path: str):
                     image_file=temp_image_path,
                     output_path=page_output_dir,  # Save to unique dir
                     base_size=1024,
-                    image_size=640,
+                    image_size=768,  # Official example uses 768
                     crop_mode=True,
                     save_results=True, 
                     test_compress=False
@@ -148,29 +149,19 @@ def process_pdf_background(job_id: str, file_path: str):
                 # If model.infer returns None (it might just save a file), we need to read that file.
                 if text_result is None:
                      # DeepSeek-OCR saves as 'result.mmd' (Markdown) or 'result_with_boxes.jpg'
-                     expected_mmd = os.path.join(page_output_dir, "to_markdown", "result.mmd")
-                     # Sometimes it's directly in the root, sometimes in subfolder. 
-                     # Let's check root first based on previous ls finding "result.mmd" in PROCESSED_DIR output.
-                     # If previous output was in PROCESSED_DIR, then it was likely at root.
                      
                      root_mmd = os.path.join(page_output_dir, "result.mmd")
-                     
-                     # Also check for "to_markdown" subfolder which some versions use
                      sub_mmd = os.path.join(page_output_dir, "to_markdown", "result.mmd")
 
                      if os.path.exists(root_mmd):
-                         with open(root_mmd, 'r') as f:
-                             text = f.read()
+                         with open(root_mmd, 'r') as f: text = f.read()
                      elif os.path.exists(sub_mmd):
-                         with open(sub_mmd, 'r') as f:
-                             text = f.read()
+                         with open(sub_mmd, 'r') as f: text = f.read()
                      else:
-                         # Last resort: Try simple file matching
                          files = os.listdir(page_output_dir)
                          md_files = [f for f in files if f.endswith('.md') or f.endswith('.mmd')]
                          if md_files:
-                             with open(os.path.join(page_output_dir, md_files[0]), 'r') as f:
-                                 text = f.read()
+                             with open(os.path.join(page_output_dir, md_files[0]), 'r') as f: text = f.read()
                          else:
                              text = "[Error: Could not find result.mmd in output]"
                 else:

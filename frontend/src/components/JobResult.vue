@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import api from '../services/api';
+import { JOB_STATUS_LABELS } from '../constants';
 
 const props = defineProps({
     jobId: { type: String, required: true },
@@ -18,6 +19,7 @@ const expandedPages = ref(new Set());
 // Computed helpers
 const isProcessing = computed(() => props.status === 'processing' || props.status === 'queued');
 const isCompleted = computed(() => props.status === 'completed');
+const statusLabel = computed(() => JOB_STATUS_LABELS[props.status] || props.status);
 
 // Actions
 const toggleCard = () => {
@@ -45,12 +47,12 @@ const downloadCsv = () => {
 
 // Interaction functions - Just emit
 const onCancel = () => {
-    if (!confirm('Are you sure you want to cancel this job?')) return;
+    if (!confirm('¿Estás seguro de que deseas cancelar este trabajo?')) return;
     emit('cancel', props.jobId);
 };
 
 const onDelete = () => {
-    if (!confirm('Are you sure you want to delete this job?')) return;
+    if (!confirm('¿Estás seguro de que deseas eliminar este trabajo?')) return;
     emit('delete', props.jobId);
 };
 </script>
@@ -61,13 +63,13 @@ const onDelete = () => {
             <div class="header-left">
                 <button class="toggle-btn" :class="{ rotated: isCardExpanded }">▶</button>
                 <h2>
-                    {{ isProcessing ? 'Processing Document...' : 'Document Results' }}
+                    {{ isProcessing ? 'Procesando Documento...' : 'Resultados del Documento' }}
                     <span class="job-id-label">#{{ jobId.slice(0,8) }}</span>
                 </h2>
             </div>
             <div class="header-right">
                 <div class="status-badge" :class="status">
-                    {{ status }} {{ isProcessing ? `(${progress}%)` : '' }}
+                    {{ statusLabel }} {{ isProcessing ? `(${progress}%)` : '' }}
                 </div>
                 
                 <!-- Cancel Button -->
@@ -75,7 +77,7 @@ const onDelete = () => {
                     v-if="isProcessing" 
                     @click.stop="onCancel" 
                     class="action-icon-btn cancel-btn" 
-                    title="Cancel Job"
+                    title="Cancelar Trabajo"
                 >
                     ✕
                 </button>
@@ -85,7 +87,7 @@ const onDelete = () => {
                     v-if="!isProcessing" 
                     @click.stop="onDelete" 
                     class="action-icon-btn delete-btn" 
-                    title="Delete Job"
+                    title="Eliminar Trabajo"
                 >
                     🗑️
                 </button>
@@ -98,18 +100,18 @@ const onDelete = () => {
             </div>
 
             <div class="actions" v-if="isCompleted">
-                <button @click="downloadExcel" class="btn btn-primary">
-                    Download Excel
+                <button @click="downloadExcel" class="action-btn">
+                    📥 Descargar Excel
                 </button>
-                <button @click="downloadCsv" class="btn btn-secondary">
-                    Download CSV
+                <button @click="downloadCsv" class="action-btn">
+                    📊 Descargar CSV
                 </button>
             </div>
             
             <!-- Result List ... -->
 
-            <div class="results-container">
-                <div v-if="results.length" class="accordion-list">
+            <div class="result-content">
+                <div v-if="results && results.length > 0" class="accordion-list">
                     <div 
                         v-for="page in results" 
                         :key="page.page" 
@@ -117,9 +119,9 @@ const onDelete = () => {
                         :class="{ 'is-expanded': isExpanded(page.page) }"
                     >
                         <div class="accordion-header" @click="togglePage(page.page)">
-                            <div class="page-title">Page {{ page.page }}</div>
+                            <div class="page-title">Página {{ page.page }}</div>
                             <button class="expand-btn">
-                                {{ isExpanded(page.page) ? 'Collapse' : 'Expand' }}
+                                {{ isExpanded(page.page) ? 'Colapsar' : 'Expandir' }}
                             </button>
                         </div>
                         
@@ -132,7 +134,7 @@ const onDelete = () => {
                 </div>
                 
                 <div v-else-if="!isProcessing" class="empty-state">
-                    No results to display.
+                    No hay resultados para mostrar.
                 </div>
             </div>
         </div>

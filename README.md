@@ -1,12 +1,13 @@
-# DeepSeek OCR Platform 🔮
+# DeepSeek OCR Platform v2.0 🔮
 
-Platforma de OCR local de alto rendimiento diseñada para procesar archivos PDF grandes utilizando el modelo **DeepSeek-OCR (1.3b)** con aceleración GPU.
+Plataforma de OCR local de alto rendimiento diseñada para procesar archivos PDF grandes utilizando el modelo **DeepSeek-OCR-2 (3B)** con aceleración GPU.
 
-## 🚀 Características
+## 🚀 Características v2.0
 
+- **Motor Actualizado**: Integra el nuevo modelo **DeepSeek-OCR-2** con "Visual Causal Flow" para una comprensión superior de documentos.
+- **Interfaz en Español**: UI totalmente localizada.
 - **Privacidad Local**: Todo el procesamiento se realiza en tu máquina; nada sube a la nube.
-- **DeepSeek-OCR**: Utiliza un modelo de visión-lenguaje (VLM) de última generación para transcripciones precisas con "grounding" (respetando estructura).
-- **Gestión Inteligente de Memoria**: Procesamiento en streaming página por página para soportar PDFs de cualquier tamaño con bajo consumo de RAM (<2GB).
+- **Gestión Inteligente de Memoria**: Procesamiento en streaming página por página.
 - **Gestión de Trabajos**: Cola de procesos, cancelación en tiempo real, historial persistente (SQLite) y borrado de trabajos.
 - **Resultados en Vivo**: Actualizaciones de progreso en tiempo real mediante Server-Sent Events (SSE).
 - **Exportación**: Descarga de resultados en formatos Excel (.xlsx) y CSV.

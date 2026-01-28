@@ -21,14 +21,14 @@ defineEmits(['delete-job', 'cancel-job']);
 
 <template>
     <div class="result-list-container">
-        <h3>Processing History</h3>
+        <h3>Historial de Procesamiento</h3>
         
         <div v-if="loading && jobs.length === 0" class="loading-state">
-            Loading history...
+            Cargando historial...
         </div>
 
         <div v-else-if="jobs.length === 0" class="empty-state">
-            No documents processed yet. Upload a PDF to start!
+            No hay documentos procesados aún. ¡Sube un PDF para comenzar!
         </div>
 
         <div class="jobs-stack">

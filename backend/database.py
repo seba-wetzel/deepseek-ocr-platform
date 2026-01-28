@@ -41,6 +41,42 @@ def init_db():
     # For simplicity, we're just ensuring they are not in the CREATE TABLE statement above.
     # If they exist from a previous schema, they will remain unless explicitly dropped.
     
+    # Prompts table
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS prompts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        content TEXT NOT NULL,
+        description TEXT,
+        is_default BOOLEAN DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    # Seed default prompt if table is empty
+    cursor.execute("SELECT COUNT(*) FROM prompts")
+    if cursor.fetchone()[0] == 0:
+        default_prompt = "<image>\n<|grounding|>Convert the document to markdown."
+        cursor.execute(
+            "INSERT INTO prompts (name, content, description, is_default) VALUES (?, ?, ?, ?)",
+            ("Default OCR", default_prompt, "Standard DeepSeek-OCR prompt", 1)
+        )
+
+    # ... migrations ...
+    if 'original_filename' not in columns:
+        print("Migrating: Adding original_filename to jobs")
+        cursor.execute("ALTER TABLE jobs ADD COLUMN original_filename TEXT")
+        
+    if 'cancelled' not in columns:
+        print("Migrating: Adding cancelled to jobs")
+        cursor.execute("ALTER TABLE jobs ADD COLUMN cancelled BOOLEAN DEFAULT 0")
+
+    if 'used_prompt' not in columns:
+         print("Migrating: Adding used_prompt to jobs")
+         cursor.execute("ALTER TABLE jobs ADD COLUMN used_prompt TEXT")
+
+    # ... rest of init_db ...
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS job_pages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,22 +86,76 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-    # Improve performance
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_pages_job_id ON job_pages(job_id)")
     
     conn.commit()
     conn.close()
 
-def create_job(job_id, original_filename=None):
+def create_job(job_id, original_filename=None, used_prompt=None):
     """Create a new job with initial status."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO jobs (id, status, progress, original_filename) VALUES (?, ?, ?, ?)",
-        (job_id, 'queued', 0, original_filename)
+        "INSERT INTO jobs (id, status, progress, original_filename, used_prompt) VALUES (?, ?, ?, ?, ?)",
+        (job_id, 'queued', 0, original_filename, used_prompt)
     )
     conn.commit()
     conn.close()
+
+# ... update_job, cancel_job, delete_job ...
+
+def get_prompts():
+    """Get all prompts."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM prompts ORDER BY id ASC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def get_prompt(prompt_id):
+    """Get a prompt by ID."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM prompts WHERE id = ?", (prompt_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def create_prompt(name, content, description=""):
+    """Create a new prompt."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO prompts (name, content, description) VALUES (?, ?, ?)",
+        (name, content, description)
+    )
+    prompt_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return prompt_id
+
+def update_prompt(prompt_id, name, content, description=""):
+    """Update an existing prompt."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE prompts SET name = ?, content = ?, description = ? WHERE id = ?",
+        (name, content, description, prompt_id)
+    )
+    conn.commit()
+    conn.close()
+
+# ... rest of existing functions ...
+# (I will insert these new functions before 'update_job' to keep flow or append at end. 
+# Better: Append Prompts CRUD at the end or logic grouping.
+# Actually, I am replacing lines 44-165, so I need to be careful to include everything I cut.)
+# Re-reading: I will target specific blocks to avoid massive replacement risk.
+
+# Block 1: init_db extensions
+
 
 def update_job(job_id, **kwargs):
     """

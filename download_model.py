@@ -1,7 +1,7 @@
 import os
 from huggingface_hub import snapshot_download
 
-MODEL_NAME = "deepseek-ai/deepseek-vl-1.3b-chat"
+MODEL_NAME = "deepseek-ai/DeepSeek-OCR-2"
 LOCAL_DIR = "data/models/deepseek-vl-1.3b-chat"
 
 print(f"Downloading {MODEL_NAME} to {LOCAL_DIR}...")
